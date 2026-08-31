@@ -349,7 +349,7 @@ function getFaseColor(p, isDiscesa) {
             let ritardoStress = isSenescenzaAttiva ? 4 : 0;
             let introSenescenza = isSenescenzaAttiva ? "🍂 <i>Senescenza attiva: l'onda altitudinale ha subito un ritardo vitale.</i><br>" : "";
 
-// 1. RICERCA ONDE MULTIPLE: Controlliamo le proiezioni REALI di oggi per tutte le zone
+        // 1. RICERCA ONDE MULTIPLE: Controlliamo le proiezioni REALI di oggi per tutte le zone
         let zoneAttive = data.zone.filter(z => Math.round(z.indice_buttata) >= 30);
         let alertOndeMultiple = "";
         
