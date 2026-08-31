@@ -98,7 +98,6 @@ class AnalizzatoreSiccitaPorcini:
                 if not eventi_trovati or (idx - eventi_trovati[-1]["indice"]) >= 4:
                     p_pre_30 = sum(serie[k]["pioggia_mm"] for k in range(max(0, idx - 32), max(0, idx - 2)))
                     
-                    # Calcolo biologico del potenziale post-siccità
                     if p_pre_30 < 15.0: ritardo, soglia, smorz = 12, 60.0, 0.30 
                     elif 15.0 <= p_pre_30 < 30.0: ritardo, soglia, smorz = 7, 50.0, 0.70
                     elif 30.0 <= p_pre_30 < 60.0: ritardo, soglia, smorz = 3, 40.0, 0.90
@@ -112,6 +111,16 @@ class AnalizzatoreSiccitaPorcini:
                                          and serie[k]["pioggia_mm"] < 1.0)
                     danno_favonio = max(0.1, 1.0 - (giorni_favonio * 0.25))
                     
+                    # --- NUOVO: Calcolo Delta-T (Shock termico per i faggi) ---
+                    pre_days = serie[max(0, idx - 4):idx]
+                    t_max_pre = max([d["t_max"] for d in pre_days]) if pre_days else giorno_max["t_max"]
+                    
+                    post_days = serie[idx:min(n, idx + 4)]
+                    t_min_post = min([d["t_min"] for d in post_days]) if post_days else giorno_max["t_min"]
+                    
+                    delta_t_shock = t_max_pre - t_min_post
+                    # -----------------------------------------------------------
+
                     eventi_trovati.append({
                         "indice": idx,
                         "data": giorno_max["data"],
@@ -119,7 +128,8 @@ class AnalizzatoreSiccitaPorcini:
                         "giorni_da_evento": giorni_da_ev,
                         "ritardo": ritardo,
                         "soglia": soglia,
-                        "smorzamento": smorz * danno_favonio
+                        "smorzamento": smorz * danno_favonio,
+                        "delta_t_shock": delta_t_shock
                     })
                 i += 3 
             else:
@@ -127,7 +137,6 @@ class AnalizzatoreSiccitaPorcini:
 
         eventi_trovati = [ev for ev in eventi_trovati if ev["giorni_da_evento"] <= 40]
 
-        # Sensore Notti Tropicali su tutto l'archivio (fino a 90 gg)
         notti_tropicali = sum(1 for d in serie if d.get("t_min", 0) >= 19.0)
         rischio_senescenza = notti_tropicali >= 2
 
@@ -183,26 +192,42 @@ def calcola_microzone(diag: Dict[str, Any], quota_stazione: int = 1285) -> List[
         else:
             t_max_eff, t_min_eff = t_max_b, t_min_b
             
-        # Correzioni speciali ecosistemi
         if z["nome"] == "Camnasco": rh_eff = max(60.0, rh_eff) 
         if z["nome"] == "Faggi Ovest": t_min_eff += 1.0 
 
         t_opt = 16.5 if z["essenza"] not in ["pino", "faggio"] else 14.5
         t_media_eff = (t_max_eff + t_min_eff) / 2
         f_T_media = math.exp(- ((t_media_eff - t_opt) ** 2) / (2 * (3.5 ** 2)))
-        f_T_freddo = 0.0 if t_min_eff < 3.0 else ((t_min_eff - 3.0) / 4.0 if t_min_eff < 7.0 else 1.0)
         
-        # Grilletto termico
-        if 8.0 <= t_min_eff <= 13.0: f_grilletto = 1.3
-        elif t_min_eff > 17.0: f_grilletto = 0.7
-        else: f_grilletto = 1.0
+        # --- NUOVO: Tolleranza al freddo differenziata ---
+        if z["essenza"] == "pino":
+            # Il pino regge fino a 0°C senza bloccarsi totalmente
+            f_T_freddo = 0.0 if t_min_eff < 0.0 else ((t_min_eff - 0.0) / 3.0 if t_min_eff < 3.0 else 1.0)
+        else:
+            f_T_freddo = 0.0 if t_min_eff < 3.0 else ((t_min_eff - 3.0) / 4.0 if t_min_eff < 7.0 else 1.0)
+        
+        # --- NUOVO: Grilletto Termico per Specie ---
+        f_grilletto = 1.0
+        if z["essenza"] == "betulla":
+            if 8.0 <= t_min_eff <= 13.0: f_grilletto = 1.3
+            elif t_min_eff > 17.0: f_grilletto = 0.7
+        elif z["essenza"] == "pino":
+            # Finestra termica molto più bassa per il Pinophilus
+            if 4.0 <= t_min_eff <= 10.0: f_grilletto = 1.4
+            elif t_min_eff > 15.0: f_grilletto = 0.7
+        elif z["essenza"] == "faggio":
+            # Il faggio ha un range intermedio
+            if 10.0 <= t_min_eff <= 14.0: f_grilletto = 1.2
+            elif t_min_eff > 18.0: f_grilletto = 0.8
+        elif z["essenza"] == "castagno":
+            if 12.0 <= t_min_eff <= 16.0: f_grilletto = 1.2
+            elif t_min_eff > 19.0: f_grilletto = 0.7
 
         f_H = 1.0 if rh_eff >= 85 else (0.0 if rh_eff < 40 else ((rh_eff - 40) / 45) ** 1.2)
         
         vento = diag["vento_max_attuale"]
         is_favonio = (vento > 20 and diag["rh_media_attuale"] < 60 and diag["pioggia_oggi"] < 1.0)
         
-        # Sant'Amate è protetta dal catino roccioso
         if z["nome"] == "Faggi Ovest": phi_vento = 1.0
         else: phi_vento = max(0.1, 1.0 - 0.04 * (vento - 20)) if is_favonio else 1.0
         
@@ -218,7 +243,15 @@ def calcola_microzone(diag: Dict[str, Any], quota_stazione: int = 1285) -> List[
             picco_eff = z["giorni_base"] + ritardo_applicato
             f_L = math.exp(- ((ev["giorni_da_evento"] - picco_eff) ** 2) / (2 * (2.2 ** 2)))
             
-            ind_pieno = 100.0 * (f_R * (f_T_media * f_T_freddo) * 1.0 * f_H) * phi_vento * ev["smorzamento"] * f_grilletto
+            # --- NUOVO: Modificatore Shock Termico per il Faggio ---
+            f_shock = 1.0
+            if z["essenza"] == "faggio":
+                delta_t = ev.get("delta_t_shock", 0)
+                if delta_t >= 7.0: f_shock = 1.4      # Vero e proprio crollo termico
+                elif delta_t >= 4.5: f_shock = 1.2    # Abbassamento marcato
+
+            # Calcolo indice finale integrando f_shock
+            ind_pieno = 100.0 * (f_R * (f_T_media * f_T_freddo) * 1.0 * f_H) * phi_vento * ev["smorzamento"] * f_grilletto * f_shock
             ind_oggi = ind_pieno * f_L
             
             indice_totale += ind_oggi
@@ -258,7 +291,6 @@ def main():
         print("Errore: nessun dato scaricato da ARPA.")
         return
 
-    # Carichiamo il vecchio storico (se esiste) per allungare la memoria dell'app
     storico_esistente = []
     try:
         if os.path.exists("data/storico.json"):
@@ -267,12 +299,10 @@ def main():
     except (FileNotFoundError, json.JSONDecodeError):
         pass
 
-    # Fusione dei dati: sovrascrive i giorni duplicati aggiornandoli e tiene i vecchi
     storico_unito = {d["data"]: d for d in storico_esistente if "data" in d}
     for d in nuovi_dati:
         storico_unito[d["data"]] = d
         
-    # Ordiniamo cronologicamente e teniamo gli ultimi 120 giorni (modificato da 90 a 120)
     storico_ordinato = sorted(storico_unito.values(), key=lambda x: x["data"])
     storico_finale = storico_ordinato[-120:]
 
@@ -297,3 +327,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
