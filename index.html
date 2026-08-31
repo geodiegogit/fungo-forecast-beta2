@@ -360,21 +360,65 @@ function getFaseColor(p, isDiscesa) {
             let dettagliZone = zoneAttive.map(z => {
                 let quotaTesto = "";
                 if (z.zona !== "Camnasco") {
-                    let gm = z.giorni_mancanti_al_picco;
+                    let minQ, maxQ;
                     
-                    if (gm >= 4) {
-                        quotaTesto = isOndaDiscendente 
-                            ? `<span style="color:#555; font-size:0.85rem;"><br>↳ Fronte alto: Cerca in <b>alto</b>, vicino al limite superiore.</span>`
-                            : `<span style="color:#555; font-size:0.85rem;"><br>↳ Fronte basso: Cerca in <b>basso</b>, al limite inferiore.</span>`;
-                    } else if (gm >= 1 && gm <= 3) {
-                        quotaTesto = `<span style="color:#555; font-size:0.85rem;"><br>↳ Cuore dell'onda: Cerca a <b>metà versante</b>. Perfetti!</span>`;
-                    } else {
-                        quotaTesto = isOndaDiscendente
-                            ? `<span style="color:#555; font-size:0.85rem;"><br>↳ Coda dell'onda: Cerca in <b>basso</b> (gli adulti superstiti scendono).</span>`
-                            : `<span style="color:#555; font-size:0.85rem;"><br>↳ Coda dell'onda: Cerca in <b>alto</b> (gli adulti superstiti salgono).</span>`;
+                    if (z.zona === "Betulle SE") { minQ = 1000; maxQ = 1350; }
+                    else if (z.zona === "Betulle NE") { minQ = 1000; maxQ = 1300; }
+                    else if (z.zona === "Faggi Ovest") { minQ = 1200; maxQ = 1600; }
+                    else if (z.zona === "Abeti Nord") { minQ = 1300; maxQ = 1600; }
+                    
+                    // Funzione per calcolare la quota dinamica di una singola onda
+                    const calcolaQuotaOnda = (gm) => {
+                        let progress = (6 - gm) / 10;
+                        progress = Math.max(0, Math.min(1, progress));
+                        let q = isOndaDiscendente 
+                            ? maxQ - (progress * (maxQ - minQ)) 
+                            : minQ + (progress * (maxQ - minQ));
+                        return Math.max(minQ, Math.min(maxQ, q));
+                    };
+                    
+                    // 1. Quota del "Porcino Perfetto" (basata sull'onda principale/attuale)
+                    let gm_principale = z.giorni_mancanti_al_picco;
+                    let quotaPerfetta = Math.round(calcolaQuotaOnda(gm_principale) / 50) * 50;
+                    
+                    quotaTesto = `<span style="color:#555; font-size:0.85rem;"><br>↳ Cerca il Porcino perfetto (10cm) attorno a <b>${quotaPerfetta} m</b>.`;
+                    
+                    // 2. Quota "Riempire il Cesto" (Baricentro delle onde multiple)
+                    if (z.onde && z.onde.length > 0) {
+                        // Filtriamo le onde attive (es. tra -4 e +6 giorni dal picco)
+                        let ondeAttive = z.onde.filter(o => o.giorni_mancanti_da_ieri >= -4 && o.giorni_mancanti_da_ieri <= 6);
+                        
+                        if (ondeAttive.length > 1) {
+                            let sumQuotas = 0;
+                            let sumPesos = 0;
+                            
+                            // Media ponderata basata sull'indice di picco di ogni onda
+                            ondeAttive.forEach(o => {
+                                let qOnda = calcolaQuotaOnda(o.giorni_mancanti_da_ieri);
+                                sumQuotas += qOnda * o.indice_picco;
+                                sumPesos += o.indice_picco;
+                            });
+                            
+                            let quotaCesto = sumQuotas / sumPesos;
+                            quotaCesto = Math.round(quotaCesto / 50) * 50;
+                            
+                            if (quotaCesto !== quotaPerfetta) {
+                                quotaTesto += `<br>↳ Cerca, per riempire il cesto (mix 3-12cm), attorno a <b>${quotaCesto} m</b>.`;
+                            } else {
+                                quotaTesto += `<br>↳ 🧺 Massima sovrapposizione! Le onde convergono a questa quota.`;
+                            }
+                        } else if (ondeAttive.length === 1) {
+                            // Se c'è una sola onda, i primordi si trovano spostati di circa 50m nella direzione dell'onda
+                            let offset = isOndaDiscendente ? -50 : 50;
+                            let quotaCesto = Math.max(minQ, Math.min(maxQ, quotaPerfetta + offset));
+                            if (quotaCesto !== quotaPerfetta) {
+                                quotaTesto += `<br>↳ Cerca, per riempire il cesto (mix 3-12cm), spostandoti verso <b>${quotaCesto} m</b>.`;
+                            }
+                        }
                     }
+                    quotaTesto += `</span>`;
                 } else {
-                    quotaTesto = `<span style="color:#555; font-size:0.85rem;"><br>↳ Quota stabile (Sorgenti a 750m)</span>`;
+                    quotaTesto = `<span style="color:#555; font-size:0.85rem;"><br>↳ Quota stabile (Sorgenti a 750 m)</span>`;
                 }
                 return `<li style="margin-bottom: 6px;"><b>${z.zona}</b> (${Math.round(z.indice_buttata)}%): ${quotaTesto}</li>`;
             }).join("");
