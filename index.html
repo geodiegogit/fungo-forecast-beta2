@@ -349,88 +349,97 @@ function getFaseColor(p, isDiscesa) {
             let ritardoStress = isSenescenzaAttiva ? 4 : 0;
             let introSenescenza = isSenescenzaAttiva ? "🍂 <i>Senescenza attiva: l'onda altitudinale ha subito un ritardo vitale.</i><br>" : "";
 
-        // 1. RICERCA ONDE MULTIPLE: Controlliamo le proiezioni REALI di oggi per tutte le zone
-            let zoneAttive = data.zone.filter(z => Math.round(z.indice_buttata) >= 30);
-            let alertOndeMultiple = "";
-            
-            if (zoneAttive.length > 0) {
-                let dettagliZone = zoneAttive.map(z => {
-                    let quotaTesto = "";
-                    if (z.zona !== "Camnasco") {
-                        let gm = z.giorni_mancanti_al_picco;
-                        let minQ, maxQ;
-                        
-                        // Associa i limiti altimetrici reali del tuo bosco
-                        if (z.zona === "Betulle SE") { minQ = 1000; maxQ = 1350; }
-                        else if (z.zona === "Betulle NE") { minQ = 1000; maxQ = 1300; }
-                        else if (z.zona === "Faggi Ovest") { minQ = 1200; maxQ = 1600; }
-                        else if (z.zona === "Abeti Nord") { minQ = 1300; maxQ = 1600; }
-                        
-                        // Calcolo per trovare funghi adulti (visibili, 5-10cm)
-                        if (gm >= 4) {
-                            // L'onda è appena entrata nella zona: gli adulti sono solo sul limite inferiore
-                            quotaTesto = `<span style="color:#555; font-size:0.85rem;"><br>↳ Cerca in <b>basso</b> (${minQ}m - ${minQ + 150}m)</span>`;
-                        } else if (gm >= 1 && gm <= 3) {
-                            // Fase centrale dell'onda: esplosione a metà versante
-                            let midStart = minQ + 100;
-                            let midEnd = maxQ - 100;
-                            quotaTesto = `<span style="color:#555; font-size:0.85rem;"><br>↳ Cerca a <b>metà versante</b> (${midStart}m - ${midEnd}m)</span>`;
-                        } else {
-                            // Picco raggiunto o superato: i funghi sani superstiti sono solo in cima
-                            quotaTesto = `<span style="color:#555; font-size:0.85rem;"><br>↳ Cerca in <b>alto</b> (${maxQ - 150}m - ${maxQ}m)</span>`;
-                        }
+// 1. RICERCA ONDE MULTIPLE: Controlliamo le proiezioni REALI di oggi per tutte le zone
+        let zoneAttive = data.zone.filter(z => Math.round(z.indice_buttata) >= 30);
+        let alertOndeMultiple = "";
+        
+        // Logica per determinare la direzione dell'onda in base alla stagione (Temperatura Massima)
+        let isOndaDiscendente = diag.t_max_attuale < 21.0; 
+        
+        if (zoneAttive.length > 0) {
+            let dettagliZone = zoneAttive.map(z => {
+                let quotaTesto = "";
+                if (z.zona !== "Camnasco") {
+                    let gm = z.giorni_mancanti_al_picco;
+                    
+                    if (gm >= 4) {
+                        quotaTesto = isOndaDiscendente 
+                            ? `<span style="color:#555; font-size:0.85rem;"><br>↳ Fronte alto: Cerca in <b>alto</b>, vicino al limite superiore.</span>`
+                            : `<span style="color:#555; font-size:0.85rem;"><br>↳ Fronte basso: Cerca in <b>basso</b>, al limite inferiore.</span>`;
+                    } else if (gm >= 1 && gm <= 3) {
+                        quotaTesto = `<span style="color:#555; font-size:0.85rem;"><br>↳ Cuore dell'onda: Cerca a <b>metà versante</b>. Perfetti!</span>`;
                     } else {
-                        quotaTesto = `<span style="color:#555; font-size:0.85rem;"><br>↳ Quota stabile (Sorgenti a 750m)</span>`;
+                        quotaTesto = isOndaDiscendente
+                            ? `<span style="color:#555; font-size:0.85rem;"><br>↳ Coda dell'onda: Cerca in <b>basso</b> (gli adulti superstiti scendono).</span>`
+                            : `<span style="color:#555; font-size:0.85rem;"><br>↳ Coda dell'onda: Cerca in <b>alto</b> (gli adulti superstiti salgono).</span>`;
                     }
-                    return `<li style="margin-bottom: 6px;"><b>${z.zona}</b> (${Math.round(z.indice_buttata)}%): ${quotaTesto}</li>`;
-                }).join("");
-                
-                alertOndeMultiple = `<div style="margin-top: 15px; padding: 10px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
-                    🍄 <b>Focus Adulti (5-10cm):</b><br>
-                    <span style="font-size: 0.85rem;">Per trovare esemplari già visibili, segui lo spostamento dell'onda all'interno delle zone già attive:</span>
-                    <ul style="margin-top: 8px; padding-left: 20px;">${dettagliZone}</ul>
-                </div>`;
-            }
-
-        // 2. LOGICA DEL CONSIGLIO
-            if (ggDaEvento === null) {
-                consiglio = "Il bosco è secco e in attesa. 🍂 L'unica speranza è cercare le zone con sorgenti sotterranee (Camnasco) o aspettare la pioggia." + alertOndeMultiple;
-            } else if (tmin < 6) {
-                consiglio = "Fa frècc di notte! 🥶 L'abbassamento termico blocca le cime alte. Stai sotto i 1000m nei boschi ben esposti al sole o ripiega su Camnasco (750m)." + alertOndeMultiple;
-            } else if (vento > 25 && rh < 55) {
-                consiglio = "Attento al vento secco! 💨 Ha asciugato i versanti aperti. Cerca rifugio nell'anfiteatro dei Faggi a Ovest (Sant'Amate) che è protetto dal Favonio (1200-1600m)." + alertOndeMultiple;
-            } else {
-                let giornoInizioMontagna = 8 + ritardoStress;
-                let giornoFineMontagna = 14 + ritardoStress;
-                
-                if (ggDaEvento < (6 + ritardoStress) && ggDaEvento >= 0) {
-                    if (zoneAttive.length > 0) {
-                         consiglio = introSenescenza + "🌱 L'ultima pioggia è ancora in incubazione, <b>ma il bosco è vivo! Segui le onde attive qui sotto.</b>" + alertOndeMultiple;
-                    } else {
-                         consiglio = introSenescenza + "🌱 Le micorrize sono in piena incubazione per l'ultimo evento piovoso. Il bosco si sta preparando. Manca ancora qualche giorno prima che l'onda arrivi in superficie.";
-                    }
-                } else if (ggDaEvento >= (6 + ritardoStress) && ggDaEvento < giornoInizioMontagna) {
-                    consiglio = introSenescenza + "L'onda dell'ultima pioggia è appena partita dal basso! Punta a <b>Camnasco (750m)</b>, la sorgente anticipa la buttata." + alertOndeMultiple;
-                } else if (ggDaEvento > giornoFineMontagna) {
-                    consiglio = introSenescenza + "Siamo a fine ciclo per l'ultimo evento. Le quote medie si sono asciugate. 🏔️ I funghi superstiti li trovi in alto." + alertOndeMultiple;
                 } else {
-                    let quotaDinamica = 1000 + ((ggDaEvento - giornoInizioMontagna) * 100);
-                    if (quotaDinamica > 1600) quotaDinamica = 1600;
-                    if (quotaDinamica < 1000) quotaDinamica = 1000;
-                    let quotaArrotondata = Math.round(quotaDinamica / 50) * 50;
-                    
-                    let zoneConsigliate = [];
-                    if (quotaArrotondata >= 1000 && quotaArrotondata <= 1350) zoneConsigliate.push("Betulle SE");
-                    if (quotaArrotondata >= 1000 && quotaArrotondata <= 1300) zoneConsigliate.push("Betulle NE");
-                    if (quotaArrotondata >= 1200 && quotaArrotondata <= 1600) zoneConsigliate.push("Faggi Ovest");
-                    if (quotaArrotondata >= 1300 && quotaArrotondata <= 1600) zoneConsigliate.push("Abeti Nord");
-                    
-                    consiglio = introSenescenza + `🎯 <b>Il Mirino Altitudinale:</b> L'onda termica dell'ultima pioggia sta salendo. Oggi taglia la montagna intorno a quota <b>${quotaArrotondata} metri</b>.<br>`;
-                    consiglio += `🌲 <b>Zone in target (nuova onda):</b> ${zoneConsigliate.join(", ")}.<br>`;
-                    
-                    consiglio += alertOndeMultiple;
+                    quotaTesto = `<span style="color:#555; font-size:0.85rem;"><br>↳ Quota stabile (Sorgenti a 750m)</span>`;
                 }
+                return `<li style="margin-bottom: 6px;"><b>${z.zona}</b> (${Math.round(z.indice_buttata)}%): ${quotaTesto}</li>`;
+            }).join("");
+            
+            alertOndeMultiple = `<div style="margin-top: 15px; padding: 10px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
+                🍄 <b>Focus Adulti (5-15cm):</b><br>
+                <span style="font-size: 0.85rem;">Segui il fronte dell'onda all'interno delle zone già attive:</span>
+                <ul style="margin-top: 8px; padding-left: 20px;">${dettagliZone}</ul>
+            </div>`;
+        }
+
+        // 2. LOGICA DEL CONSIGLIO E DEL MIRINO
+        if (ggDaEvento === null) {
+            consiglio = "Il bosco è secco e in attesa. 🍂 L'unica speranza è cercare le zone con sorgenti sotterranee (Camnasco) o aspettare la pioggia." + alertOndeMultiple;
+        } else if (tmin < 6 && !isOndaDiscendente) {
+            consiglio = "Fa frècc di notte! 🥶 L'abbassamento termico blocca le betulle. Stai sotto i 1000m o ripiega sugli Abeti Nord (se sono attivi) che resistono al freddo." + alertOndeMultiple;
+        } else if (vento > 25 && rh < 55) {
+            consiglio = "Attento al vento secco! 💨 Il favonio ha asciugato i versanti aperti. Cerca rifugio nell'anfiteatro dei Faggi a Ovest (Sant'Amate), lì c'è il microclima umido perfetto." + alertOndeMultiple;
+        } else {
+            let giornoInizioMontagna = 8 + ritardoStress;
+            let giornoFineMontagna = 17 + ritardoStress; 
+            
+            if (ggDaEvento < (6 + ritardoStress) && ggDaEvento >= 0) {
+                 consiglio = introSenescenza + (zoneAttive.length > 0 ? "🌱 L'ultima pioggia è in incubazione, <b>ma le vecchie onde sono attive!</b>" : "🌱 Le micorrize sono in piena incubazione per l'ultimo evento. Manca qualche giorno al fronte.") + alertOndeMultiple;
+            } else if (ggDaEvento >= (6 + ritardoStress) && ggDaEvento < giornoInizioMontagna) {
+                consiglio = introSenescenza + "L'onda della pioggia è partita! Le prime spie sono a <b>Camnasco (750m)</b>, la sorgente anticipa tutto." + alertOndeMultiple;
+            } else if (ggDaEvento > giornoFineMontagna) {
+                consiglio = introSenescenza + "Siamo a fine ciclo per l'ultimo evento. 🏔️" + alertOndeMultiple;
+            } else {
+                // Calcolo dinamico della quota
+                let giorniDiSviluppo = ggDaEvento - giornoInizioMontagna;
+                let quotaFronte = isOndaDiscendente 
+                    ? 1550 - (giorniDiSviluppo * 45)  // Autunno: scende dall'alto
+                    : 1000 + (giorniDiSviluppo * 45); // Estate: sale dal basso
+                
+                // Manteniamo nei limiti fisici del bosco
+                quotaFronte = Math.max(1000, Math.min(1600, quotaFronte));
+                
+                // Dove trovare i funghi da 5-15cm (la coda dell'onda di 3 giorni fa)
+                let scartoAdulti = 120; // Circa 120 metri di differenza
+                let quotaAdulti = isOndaDiscendente ? quotaFronte + scartoAdulti : quotaFronte - scartoAdulti;
+                quotaAdulti = Math.max(1000, Math.min(1600, quotaAdulti));
+
+                let minTarget = Math.min(quotaFronte, quotaAdulti);
+                let maxTarget = Math.max(quotaFronte, quotaAdulti);
+                
+                // Arrotondiamo per estetica a scaglioni di 50m
+                minTarget = Math.round(minTarget / 50) * 50;
+                maxTarget = Math.round(maxTarget / 50) * 50;
+
+                // Match zone con tolleranza (fuzzy logic)
+                let zoneConsigliate = [];
+                if (maxTarget >= 950 && minTarget <= 1400) zoneConsigliate.push("Betulle");
+                if (maxTarget >= 1150 && minTarget <= 1650) zoneConsigliate.push("Faggi Ovest");
+                if (maxTarget >= 1250 && minTarget <= 1650) zoneConsigliate.push("Abeti Nord");
+                
+                let dinText = isOndaDiscendente ? "📉 <b>Onda Autunnale in discesa:</b>" : "📈 <b>Onda Estiva in salita:</b>";
+                
+                consiglio = introSenescenza + `🎯 ${dinText} Il fronte primordi oggi taglia a circa ${Math.round(quotaFronte)}m.<br>`;
+                consiglio += `🍄 <b>Obiettivo 5-15cm:</b> Il cuore dell'onda è nella fascia <b>tra ${minTarget}m e ${maxTarget}m</b>.<br>`;
+                consiglio += `🌲 <b>Habitat in target:</b> ${zoneConsigliate.length > 0 ? zoneConsigliate.join(", ") : "Camnasco"}.<br>`;
+                
+                consiglio += alertOndeMultiple;
             }
+        }
         //fino qui 
             document.getElementById('consiglio-text').innerHTML = consiglio;
 
