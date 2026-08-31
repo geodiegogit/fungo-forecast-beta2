@@ -647,8 +647,7 @@ function getFaseColor(p, isDiscesa) {
                     let dots = '';
                     
                     globalData.zone.forEach((z) => {
-                      //  if (z.zona === "Camnasco") return;  
-
+                     
                         let finalProj = 0;
                         if (z.onde && z.onde.length > 0) {
                             z.onde.onda?.forEach?.(onda => {}); // safe guard
@@ -665,8 +664,19 @@ function getFaseColor(p, isDiscesa) {
                             });
                         }
                         
-                        if (tmin < 6) finalProj *= 0.3; 
-                        if (vMax > 25 && pTot < 1.0 && z.zona !== "Faggi Ovest") finalProj *= 0.5; 
+                        // 1. Danni da Vento / Favonio (Faggi immuni)
+                        if (vMax > 25 && pTot < 1.0 && z.zona !== "Faggi Ovest") {
+                            finalProj *= 0.5; 
+                        }
+                        
+                        // 2. Tolleranza al Freddo differenziata per Ecosistema
+                        if (z.zona === "Abeti Nord") {
+                            // Pinophilus: tollera molto bene il freddo. Penalizziamo solo in caso di gelate.
+                            if (tmin < 2) finalProj *= 0.4;
+                        } else {
+                            // Edulis e Aereus (Betulle, Faggi, Castagni): soffrono il freddo marcato
+                            if (tmin < 6) finalProj *= 0.3;
+                        }
                         
                         let pRounded = Math.round(finalProj / 5) * 5;
                         if(pRounded > 100) pRounded = 100;
